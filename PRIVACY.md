@@ -1,0 +1,72 @@
+# Privacy Notice
+
+**Asset Export Pro / Express File Packager**
+**Developer:** AmyBeth Menendez
+**Effective Date:** May 4, 2026
+
+---
+
+## 1. Overview
+
+This Privacy Notice explains how the Asset Export Pro add-on ("Add-on") for Adobe Express handles your information. Your privacy is important. This Add-on is designed to operate entirely within your browser and Adobe Express environment — it does not collect, transmit, or store your personal data on any external server.
+
+---
+
+## 2. Information We Do Not Collect
+
+The Add-on does **not**:
+
+- Collect your name, email address, or any personally identifiable information
+- Transmit your document content, assets, or files to any external server
+- Use analytics, tracking pixels, or telemetry
+- Store cookies or persistent identifiers
+- Share any data with third parties
+
+---
+
+## 3. How the Add-on Works
+
+All processing performed by the Add-on occurs **locally within your browser session**:
+
+- **PNG Export:** Renders document pages as PNG images using Adobe Express's built-in rendition API. Files are generated in-memory and downloaded directly to your device.
+- **PDF Export:** Generates a print-ready PDF using Adobe Express's document export API. The file is downloaded directly to your device.
+- **Layer Asset Export:** Reads layer/asset nodes from your open document and exports them as PNG files. All processing happens within the Adobe Express sandbox environment.
+- **Font List Export:** Reads font metadata from text nodes in your document and writes it to a plain text file downloaded to your device.
+- **Create Package:** Bundles the above exports into a ZIP file using the JSZip library, processed entirely in-memory in your browser, then downloaded to your device.
+
+No document content, asset data, or export output is ever sent to an external server.
+
+---
+
+## 4. Third-Party Libraries
+
+The Add-on uses the following third-party library:
+
+- **JSZip 3.10.1** — used for in-browser ZIP file creation. No data is sent to JSZip servers; the library runs entirely client-side.
+
+The Add-on operates within the **Adobe Express** platform. Your use of Adobe Express is subject to [Adobe's Privacy Policy](https://www.adobe.com/privacy/policy.html).
+
+---
+
+## 5. Children's Privacy
+
+The Add-on is not directed at children under the age of 13. We do not knowingly collect information from children.
+
+---
+
+## 6. Changes to This Notice
+
+This Privacy Notice may be updated from time to time. The effective date at the top of this document will reflect the most recent revision. Continued use of the Add-on after changes are posted constitutes acceptance of the updated notice.
+
+---
+
+## 7. Contact
+
+If you have questions about this Privacy Notice, contact:
+
+**AmyBeth Menendez**
+GitHub: [https://github.com/amybeth222](https://github.com/amybeth222)
+
+---
+
+*© 2026 AmyBeth Menendez. All rights reserved.*
