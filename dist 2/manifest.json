@@ -1,0 +1,28 @@
+{
+    "testId": "playground-add-on",
+    "name": "Playground AddOn",
+    "version": "1.0.1",
+    "manifestVersion": 2,
+    "requirements": {
+        "apps": [
+            {
+                "name": "Express",
+                "apiVersion": 1
+            }
+        ],
+        "experimentalApis": false,
+        "renditionPreview": false
+    },
+    "entryPoints": [
+        {
+            "type": "panel",
+            "id": "playground-panel",
+            "main": "index.html",
+            "permissions": {
+                "sandbox": [],
+                "oauth": []
+            },
+            "documentSandbox": "sandbox/code.js"
+        }
+    ]
+}

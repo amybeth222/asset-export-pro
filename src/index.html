@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Asset Export Pro</title>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <link rel="stylesheet" href="https://use.typekit.net/lam0mis.css">
+    <style>
+        :root {
+            --panel-bg: #f8f7f4;
+            --card-bg: #dedede;
+            --button-bg: #575be7;
+            --button-bg-hover: #484cdc;
+            --button-disabled: #e3e3e3;
+            --button-text-disabled: #b1b1b1;
+            --title-color: #262626;
+            --body-text: #202020;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: adobe-clean, sans-serif;
+            background: var(--panel-bg);
+            color: var(--body-text);
+        }
+
+        .container {
+            padding: 16px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        h1 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--title-color);
+            line-height: 1.2;
+        }
+
+        .action-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .action-button {
+            width: 100%;
+            min-height: 38px;
+            padding: 8px 16px;
+            border: 0;
+            border-radius: 999px;
+            background: var(--button-bg);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: adobe-clean, sans-serif;
+            transition: background-color 0.18s ease, color 0.18s ease;
+        }
+
+        .action-button:hover:not(:disabled) {
+            background: var(--button-bg-hover);
+        }
+
+        .action-button:disabled {
+            background: var(--button-disabled);
+            color: var(--button-text-disabled);
+            cursor: not-allowed;
+        }
+
+        .status {
+            min-height: 44px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            background: var(--card-bg);
+            color: var(--body-text);
+            font-size: 12px;
+            line-height: 1.4;
+            display: block;
+        }
+
+        .status.warning,
+        .status.error,
+        .status.info,
+        .status.success {
+            background: var(--card-bg);
+            color: var(--body-text);
+        }
+
+        .progress {
+            height: 3px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            display: block;
+            opacity: 0;
+            transition: opacity 0.18s ease;
+        }
+
+        .progress.active {
+            opacity: 1;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--button-bg);
+            transition: width 0.3s;
+            width: 0%;
+        }
+
+        .download-link {
+            display: none;
+            margin-top: -6px;
+            color: #2f3adf;
+            text-decoration: underline;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .download-link.visible {
+            display: inline-block;
+        }
+
+        .bleed-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--body-text);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .bleed-toggle input[type='checkbox'] {
+            width: 14px;
+            height: 14px;
+            accent-color: var(--button-bg);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 420px) {
+            .container {
+                padding: 14px 16px;
+                gap: 12px;
+            }
+
+            h1 {
+                font-size: 16px;
+            }
+
+            .action-button {
+                min-height: 34px;
+                font-size: 12px;
+            }
+
+            .status {
+                font-size: 11px;
+                min-height: 38px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Express File Packager</h1>
+        <div class="action-list">
+            <button id="downloadImagesBtn" class="action-button">Export PNG Images</button>
+            <button id="downloadPdfBtn" class="action-button">Export PDF Document</button>
+            <button id="downloadLayerAssetsBtn" class="action-button">Export Layer Assets</button>
+            <button id="exportFontsBtn" class="action-button">Export Font List (fonts.txt)</button>
+            <button id="exportAllBtn" class="action-button">Create Package</button>
+        </div>
+        <label class="bleed-toggle">
+            <input type="checkbox" id="bleedToggle">
+            Add 3mm bleed (for print)
+        </label>
+        <div id="status" class="status"></div>
+        <a id="manualDownloadLink" class="download-link" href="#">Download file manually</a>
+        <div id="progress" class="progress">
+            <div id="progressBar" class="progress-bar"></div>
+        </div>
+    </div>
+    <script type="module">
+        import addOnUISdk from "https://express.adobe.com/static/add-on-sdk/sdk.js";
+        await addOnUISdk.ready;
+        const { runtime } = addOnUISdk.instance;
+        let scriptApi = null;
+        async function getScriptApi() {
+            if (!scriptApi) {
+                scriptApi = await runtime.apiProxy("documentSandbox");
+            }
+            return scriptApi;
+        }
+        const actionButtons = Array.from(document.querySelectorAll('.action-button'));
+        const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+        const downloadImagesBtn = document.getElementById('downloadImagesBtn');
+        const downloadLayerAssetsBtn = document.getElementById('downloadLayerAssetsBtn');
+        const exportFontsBtn = document.getElementById('exportFontsBtn');
+        const exportAllBtn = document.getElementById('exportAllBtn');
+        const statusEl = document.getElementById('status');
+        const bleedToggle = document.getElementById('bleedToggle');
+        const manualDownloadLink = document.getElementById('manualDownloadLink');
+        const progressEl = document.getElementById('progress');
+        const progressBar = document.getElementById('progressBar');
+        let activeDownloadUrl = null;
+
+        const ACTIONS = {
+            pdf: {
+                message: 'Exporting PDF...',
+                zipNameSuffix: 'print_ready_pdf',
+                formats: [{
+                    type: 'pdf',
+                    format: addOnUISdk.constants.RenditionFormat.pdf
+                }],
+                includeFontList: false,
+                includeInstructions: true,
+                range: addOnUISdk.constants.Range.entireDocument,
+                directDownload: true
+            },
+            images: {
+                message: 'Exporting images...',
+                zipNameSuffix: 'images',
+                formats: [{
+                    type: 'png',
+                    format: addOnUISdk.constants.RenditionFormat.png
+                }],
+                includeFontList: false,
+                range: addOnUISdk.constants.Range.entireDocument,
+                directDownload: false,
+                transparentPngByPage: true
+            },
+            fonts: {
+                message: 'Exporting fonts list...',
+                zipNameSuffix: 'fonts',
+                formats: [],
+                includeFontList: true,
+                range: addOnUISdk.constants.Range.currentPage,
+                directDownload: false
+            },
+            all: {
+                message: 'Exporting all assets...',
+                zipNameSuffix: 'assets',
+                formats: [
+                    {
+                        type: 'pdf',
+                        format: addOnUISdk.constants.RenditionFormat.pdf
+                    },
+                    {
+                        type: 'png',
+                        format: addOnUISdk.constants.RenditionFormat.png
+                    }
+                ],
+                includeFontList: true,
+                includeLayerAssets: true,
+                includeInstructions: true,
+                range: addOnUISdk.constants.Range.entireDocument,
+                directDownload: false,
+                transparentPngByPage: true
+            }
+        };
+
+        function showStatus(msg, type = 'info') {
+            statusEl.textContent = msg;
+            statusEl.className = `status ${type}`;
+        }
+
+        function resetManualDownloadLink() {
+            manualDownloadLink.classList.remove('visible');
+            manualDownloadLink.removeAttribute('href');
+            manualDownloadLink.removeAttribute('download');
+            if (activeDownloadUrl) {
+                URL.revokeObjectURL(activeDownloadUrl);
+                activeDownloadUrl = null;
+            }
+        }
+
+        function updateProgress(pct) {
+            progressBar.style.width = `${pct}%`;
+            progressEl.classList.toggle('active', pct > 0);
+        }
+
+        function setButtonsDisabled(disabled) {
+            actionButtons.forEach(button => {
+                button.disabled = disabled;
+            });
+        }
+
+        function formatStatusMessage(msg) {
+            return msg.replace(/^✓\s*/, '✓ ');
+        }
+
+        function sanitizeTitle(docTitle) {
+            return docTitle.replace(/[^a-z0-9]/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').toLowerCase() || 'package';
+        }
+
+        function sanitizeFilePart(value, fallback = 'item') {
+            if (!value) return fallback;
+            const safe = value
+                .toLowerCase()
+                .replace(/[^a-z0-9]/gi, '_')
+                .replace(/_+/g, '_')
+                .replace(/^_|_$/g, '');
+            return safe || fallback;
+        }
+
+        async function getDocumentFontLines() {
+            return ['Font report: check your document for fonts used. Sandbox font extraction is currently disabled.'];
+        }
+
+        function createThreeMillimeterBleed() {
+            return {
+                amount: 3,
+                unit: addOnUISdk.constants.BleedUnit.Millimeter
+            };
+        }
+
+        function buildPrintReadyPdfOptions(baseOptions, applyBleed, mode = 'pageBoxes') {
+            if (!applyBleed) return { ...baseOptions };
+            const threeMillimeterBleed = createThreeMillimeterBleed();
+            const zeroBleed = { amount: 0, unit: addOnUISdk.constants.BleedUnit.Millimeter };
+
+            const pdfOptions = mode === 'bleedOnly'
+                ? {
+                    ...baseOptions,
+                    bleed: threeMillimeterBleed
+                }
+                : {
+                    ...baseOptions,
+                    pageBoxes: {
+                        mediaBox: {
+                            margins: {
+                                top: threeMillimeterBleed,
+                                bottom: threeMillimeterBleed,
+                                left: threeMillimeterBleed,
+                                right: threeMillimeterBleed
+                            }
+                        },
+                        bleedBox: {
+                            margins: {
+                                top: threeMillimeterBleed,
+                                bottom: threeMillimeterBleed,
+                                left: threeMillimeterBleed,
+                                right: threeMillimeterBleed
+                            }
+                        },
+                        cropBox: {
+                            margins: {
+                                top: threeMillimeterBleed,
+                                bottom: threeMillimeterBleed,
+                                left: threeMillimeterBleed,
+                                right: threeMillimeterBleed
+                            }
+                        },
+                        trimBox: {
+                            margins: {
+                                top: zeroBleed,
+                                bottom: zeroBleed,
+                                left: zeroBleed,
+                                right: zeroBleed
+                            }
+                        }
+                    }
+                };
+            console.log('[Asset Export Pro] PDF options with bleed:', JSON.stringify(pdfOptions, null, 2));
+            return pdfOptions;
+        }
+
+        function getRenditionIntent(formatType, applyBleed) {
+            if (formatType === 'pdf') {
+                return addOnUISdk.constants.RenditionIntent.print;
+            }
+            return addOnUISdk.constants.RenditionIntent.export;
+        }
+
+        function parsePdfBox(text, boxName) {
+            const match = text.match(new RegExp(`/${boxName}\\s*\\[([^\\]]+)\\]`));
+            if (!match) return null;
+            const values = match[1].trim().split(/\s+/).map(Number).filter(Number.isFinite);
+            return values.length === 4 ? values : null;
+        }
+
+        async function pdfHasBleedBox(blob) {
+            try {
+                const buffer = await blob.arrayBuffer();
+                const decoder = new TextDecoder('latin1');
+                const text = decoder.decode(buffer);
+                const trimBox = parsePdfBox(text, 'TrimBox');
+                const bleedBox = parsePdfBox(text, 'BleedBox');
+
+                if (!trimBox || !bleedBox) {
+                    return { hasBleed: false, reason: 'Missing TrimBox or BleedBox in PDF metadata.' };
+                }
+
+                const hasBleed = bleedBox[0] < trimBox[0]
+                    || bleedBox[1] < trimBox[1]
+                    || bleedBox[2] > trimBox[2]
+                    || bleedBox[3] > trimBox[3];
+
+                return {
+                    hasBleed,
+                    reason: hasBleed ? 'Detected larger BleedBox than TrimBox.' : 'BleedBox matches TrimBox.'
+                };
+            } catch (error) {
+                return { hasBleed: false, reason: `Unable to inspect PDF boxes: ${error.message}` };
+            }
+        }
+
+        function isPremiumEntitlementError(error) {
+            if (!error) return false;
+            const code = String(error.code || '').toUpperCase();
+            const message = String(error.message || '').toUpperCase();
+            return code.includes('USER_NOT_ENTITLED')
+                || message.includes('USER_NOT_ENTITLED')
+                || message.includes('PREMIUM_CONTENT');
+        }
+
+        async function documentHasPremiumContent(range) {
+            const pages = await addOnUISdk.app.document.getPagesMetadata({ range });
+            return pages.some(page => page.hasPremiumContent);
+        }
+
+        async function promptPremiumUpgrade(message = 'This export includes Premium content. Upgrade to continue.') {
+            try {
+                await addOnUISdk.app.startPremiumUpgradeIfFreeUser();
+            } catch (error) {
+                console.error('Premium upgrade flow failed:', error);
+            }
+
+            showStatus(`${message} Use the upgrade prompt to unlock PDF export.`, 'warning');
+        }
+
+        async function ensurePdfEntitlement(formats, range) {
+            const needsPdf = formats.some(format => format.type === 'pdf');
+            if (!needsPdf) return true;
+
+            try {
+                const containsPremiumContent = await documentHasPremiumContent(range);
+                if (containsPremiumContent) {
+                    const isPremiumAfterUpgradeFlow = await addOnUISdk.app.startPremiumUpgradeIfFreeUser();
+                    if (!isPremiumAfterUpgradeFlow) {
+                        showStatus('This file contains Premium content. Upgrade to export print-ready PDF.', 'warning');
+                        return false;
+                    }
+                } else {
+                    const isPremium = await addOnUISdk.app.startPremiumUpgradeIfFreeUser();
+                    if (!isPremium) {
+                        showStatus('PDF export requires Adobe Express Premium.', 'warning');
+                        return false;
+                    }
+                }
+                return true;
+            } catch (error) {
+                if (isPremiumEntitlementError(error)) {
+                    await promptPremiumUpgrade('This export includes Premium content.');
+                    return false;
+                }
+                throw error;
+            }
+        }
+
+        async function downloadBlob(blob, filename) {
+            resetManualDownloadLink();
+            const url = URL.createObjectURL(blob);
+            activeDownloadUrl = url;
+
+            manualDownloadLink.href = url;
+            manualDownloadLink.download = filename;
+            manualDownloadLink.classList.add('visible');
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            await new Promise(resolve => setTimeout(resolve, 100));
+            link.click();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            document.body.removeChild(link);
+        }
+
+        function formatPageSize(sizeInUnits) {
+            if (!sizeInUnits) return 'Unknown size';
+            const width = Number(sizeInUnits.width).toFixed(2);
+            const height = Number(sizeInUnits.height).toFixed(2);
+            const unit = sizeInUnits.unit || 'unit';
+            return `${width} x ${height} ${unit}`;
+        }
+
+        async function buildPrintDocumentSizeReport(range) {
+            try {
+                const pages = await addOnUISdk.app.document.getPagesMetadata({ range });
+                if (!Array.isArray(pages) || pages.length === 0) {
+                    return ['Document size: unavailable'];
+                }
+
+                const uniqueSizes = [];
+                const seen = new Set();
+                for (const page of pages) {
+                    const label = formatPageSize(page.sizeInUnits);
+                    if (!seen.has(label)) {
+                        seen.add(label);
+                        uniqueSizes.push(label);
+                    }
+                }
+
+                return [
+                    `Page count: ${pages.length}`,
+                    `First page size: ${formatPageSize(pages[0].sizeInUnits)}`,
+                    `Unique page sizes: ${uniqueSizes.join(' | ')}`
+                ];
+            } catch (error) {
+                console.error('Failed to build document size report:', error);
+                return ['Document size: unavailable'];
+            }
+        }
+
+        function buildPrintReadme(documentSizeLines, bleedApplied) {
+            return [
+                'PRINT README',
+                '============',
+                '',
+                'This package includes a print-ready PDF export.',
+                '',
+                '--- DOCUMENT SIZE ---',
+                ...documentSizeLines,
+                '',
+                '--- PRINT CHECKLIST ---',
+                '1. Always confirm color mode with your printer (RGB, CMYK, or ICC-managed workflow).',
+                '2. Always confirm effective resolution requirements before production.',
+                '3. Verify trim size, bleed amount, and safe area with your printer.',
+                '4. Request a proof for color-critical jobs before final run.',
+                '',
+                '--- BLEED NOTES ---',
+                '- This PDF is exported at full resolution from Adobe Express.',
+                bleedApplied
+                    ? '- 3mm bleed was applied to all sides via the SDK bleed option.'
+                    : '- No bleed was applied. Use a prepress tool (e.g. Acrobat, InDesign) to add bleed if required.',
+                '- Confirm trim size and bleed amount with your printer before production.',
+                '- To verify bleed in Acrobat: Print Production > Set Page Boxes > inspect BleedBox vs TrimBox.'
+            ].join('\n');
+        }
+
+        async function buildAssetBlob(docTitle, action) {
+            const safeTitle = sanitizeTitle(docTitle);
+            const formats = action.formats;
+            const zip = new JSZip();
+            let completed = 0;
+            let totalSteps = formats.length;
+            let exportedPngCount = 0;
+            let exportedLayerAssetCount = 0;
+            let targetPages = [];
+            let usedPageFallbackPng = false;
+
+            if (action.transparentPngByPage) {
+                const selectedPageIds = await addOnUISdk.app.document.getSelectedPageIds();
+                if (selectedPageIds.length > 1) {
+                    targetPages = await addOnUISdk.app.document.getPagesMetadata({
+                        range: addOnUISdk.constants.Range.specificPages,
+                        pageIds: selectedPageIds
+                    });
+                } else {
+                    targetPages = await addOnUISdk.app.document.getPagesMetadata({
+                        range: addOnUISdk.constants.Range.entireDocument
+                    });
+                }
+
+                totalSteps = formats.reduce((sum, format) => {
+                    if (format.type === 'png') {
+                        return sum + Math.max(targetPages.length, 1);
+                    }
+                    return sum + 1;
+                }, 0);
+            }
+
+            if (action.includeLayerAssets) {
+                totalSteps += 1;
+            }
+
+            for (const format of formats) {
+                showStatus(`Exporting ${format.type.toUpperCase()}...`, 'info');
+
+                if (format.type === 'png' && action.transparentPngByPage) {
+                    usedPageFallbackPng = true;
+                    for (let i = 0; i < targetPages.length; i++) {
+                        const page = targetPages[i];
+                        let renditions;
+                        try {
+                            renditions = await addOnUISdk.app.document.createRenditions({
+                                range: addOnUISdk.constants.Range.specificPages,
+                                pageIds: [page.id],
+                                format: format.format,
+                                backgroundColor: 0x00000000
+                            }, addOnUISdk.constants.RenditionIntent.export);
+                        } catch (error) {
+                            if (isPremiumEntitlementError(error)) {
+                                await promptPremiumUpgrade('This page includes Premium content.');
+                                const entitlementError = new Error('Premium content upgrade required.');
+                                entitlementError.code = 'PREMIUM_UPGRADE_REQUIRED';
+                                throw entitlementError;
+                            }
+                            throw error;
+                        }
+
+                        if (renditions.length > 0) {
+                            const pageLabel = sanitizeFilePart(page.title, `page${i + 1}`);
+                            zip.file(`${safeTitle}_${pageLabel}.png`, renditions[0].blob);
+                            exportedPngCount += 1;
+                        }
+
+                        completed += 1;
+                        updateProgress(10 + (completed / Math.max(totalSteps, 1)) * 70);
+                    }
+
+                    continue;
+                }
+
+                const options = {
+                    range: action.range,
+                    format: format.format
+                };
+                if (format.type === 'png') {
+                    options.backgroundColor = 0x00000000;
+                }
+
+                const applyBleed = bleedToggle.checked;
+                const renditionOptions = format.type === 'pdf'
+                    ? buildPrintReadyPdfOptions(options, applyBleed)
+                    : options;
+
+                let renditions;
+                try {
+                    console.log('[Asset Export Pro] Rendition options:', JSON.stringify(renditionOptions, null, 2));
+                    renditions = await addOnUISdk.app.document.createRenditions(renditionOptions, getRenditionIntent(format.type, applyBleed));
+                } catch (error) {
+                    if (isPremiumEntitlementError(error)) {
+                        await promptPremiumUpgrade('This export includes Premium content.');
+                        const entitlementError = new Error('Premium content upgrade required.');
+                        entitlementError.code = 'PREMIUM_UPGRADE_REQUIRED';
+                        throw entitlementError;
+                    }
+                    throw error;
+                }
+
+                if (format.type === 'pdf' && applyBleed && renditions.length > 0) {
+                    const primaryCheck = await pdfHasBleedBox(renditions[0].blob);
+                    console.log('[Asset Export Pro] PDF bleed check (pageBoxes mode):', primaryCheck.reason);
+
+                    if (!primaryCheck.hasBleed) {
+                        const fallbackOptions = buildPrintReadyPdfOptions(options, true, 'bleedOnly');
+                        try {
+                            const fallbackRenditions = await addOnUISdk.app.document.createRenditions(
+                                fallbackOptions,
+                                getRenditionIntent(format.type, true)
+                            );
+                            if (fallbackRenditions.length > 0) {
+                                const fallbackCheck = await pdfHasBleedBox(fallbackRenditions[0].blob);
+                                console.log('[Asset Export Pro] PDF bleed check (bleed-only mode):', fallbackCheck.reason);
+                                if (fallbackCheck.hasBleed) {
+                                    renditions = fallbackRenditions;
+                                    showStatus('Applied bleed in compatibility mode.', 'info');
+                                } else {
+                                    showStatus('Warning: SDK exported PDF without detectable bleed. Use prepress tools to add bleed.', 'warning');
+                                }
+                            }
+                        } catch (fallbackError) {
+                            console.warn('[Asset Export Pro] Fallback bleed rendition failed:', fallbackError);
+                        }
+                    }
+                }
+
+                if (action.directDownload && formats.length === 1 && renditions.length === 1) {
+                    const directFilename = format.type === 'pdf' && applyBleed
+                        ? `${safeTitle}_bleed.${format.type}`
+                        : `${safeTitle}.${format.type}`;
+                    return {
+                        blob: renditions[0].blob,
+                        filename: directFilename,
+                        successMessage: '✓ Successfully exported PDF!'
+                    };
+                }
+
+                for (let i = 0; i < renditions.length; i++) {
+                    const pageSuffix = renditions.length > 1 ? `_page${i + 1}` : '';
+                    zip.file(`${safeTitle}${pageSuffix}.${format.type}`, renditions[i].blob);
+                }
+
+                completed += 1;
+                updateProgress(10 + (completed / Math.max(totalSteps, 1)) * 70);
+            }
+
+            if (action.includeLayerAssets) {
+                showStatus('Exporting layer assets...', 'info');
+                try {
+                    const layerExport = await (await getScriptApi()).exportLayerAssets();
+                    const layerAssets = (layerExport && Array.isArray(layerExport.assets)) ? layerExport.assets : [];
+                    for (const asset of layerAssets) {
+                        zip.file(`layer_assets/${asset.fileName}`, asset.blob);
+                    }
+                    exportedLayerAssetCount = layerAssets.length;
+                } catch (layerExportError) {
+                    console.warn('Layer asset export skipped in package:', layerExportError);
+                }
+
+                completed += 1;
+                updateProgress(10 + (completed / Math.max(totalSteps, 1)) * 70);
+            }
+
+            if (action.includeFontList) {
+                const fontLines = await getDocumentFontLines();
+                zip.file('fonts.txt', fontLines.join('\n'));
+            }
+
+            if (action.includeInstructions) {
+                const documentSizeLines = await buildPrintDocumentSizeReport(action.range);
+                const bleedApplied = bleedToggle.checked;
+                zip.file('PRINT_README.txt', buildPrintReadme(documentSizeLines, bleedApplied));
+            }
+
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            const baseSuccessMessage = action === ACTIONS.all
+                ? `✓ Successfully exported all assets to ${safeTitle}_${action.zipNameSuffix}.zip!`
+                : '✓ Export complete!';
+
+            let pngDetail = '';
+            if (action.transparentPngByPage && usedPageFallbackPng) {
+                pngDetail = ` Exported ${exportedPngCount} transparent PNG page file(s).`;
+            }
+
+            let layerAssetDetail = '';
+            if (action.includeLayerAssets) {
+                layerAssetDetail = ` Included ${exportedLayerAssetCount} layer asset(s).`;
+            }
+
+            return {
+                blob: zipBlob,
+                filename: `${safeTitle}_${action.zipNameSuffix}.zip`,
+                successMessage: `${baseSuccessMessage}${pngDetail}${layerAssetDetail}`
+            };
+        }
+
+        async function runAction(action) {
+            try {
+                setButtonsDisabled(true);
+                resetManualDownloadLink();
+                showStatus(formatStatusMessage(action.message), 'info');
+                updateProgress(0);
+
+                const canExport = await addOnUISdk.app.document.exportAllowed();
+                if (!canExport) {
+                    showStatus('Export restricted. Document under review.', 'warning');
+                    setButtonsDisabled(false);
+                    return;
+                }
+
+                const hasPdfEntitlement = await ensurePdfEntitlement(action.formats, action.range);
+                if (!hasPdfEntitlement) {
+                    updateProgress(0);
+                    setButtonsDisabled(false);
+                    return;
+                }
+
+                updateProgress(10);
+                const docTitle = await addOnUISdk.app.document.title();
+
+                const asset = await buildAssetBlob(docTitle, action);
+                updateProgress(85);
+                await downloadBlob(asset.blob, asset.filename);
+                updateProgress(100);
+                showStatus(`${asset.successMessage} If nothing downloads, click the manual download link below.`, 'success');
+                setTimeout(() => {
+                    updateProgress(0);
+                    showStatus('Ready to export assets.', 'info');
+                    setButtonsDisabled(false);
+                }, 3000);
+            } catch (error) {
+                console.error(error);
+                if (error?.code === 'PREMIUM_UPGRADE_REQUIRED') {
+                    // Status was already set by premium-upgrade flow helper.
+                    setButtonsDisabled(false);
+                    updateProgress(0);
+                    return;
+                }
+                showStatus(`Error: ${error.message}`, 'error');
+                updateProgress(0);
+                setButtonsDisabled(false);
+            }
+        }
+
+        downloadPdfBtn.addEventListener('click', () => runAction(ACTIONS.pdf));
+        downloadImagesBtn.addEventListener('click', () => runAction(ACTIONS.images));
+        exportFontsBtn.addEventListener('click', () => runAction(ACTIONS.fonts));
+        exportAllBtn.addEventListener('click', () => runAction(ACTIONS.all));
+
+        downloadLayerAssetsBtn.addEventListener('click', async () => {
+            try {
+                setButtonsDisabled(true);
+                resetManualDownloadLink();
+                showStatus('Extracting layer assets...', 'info');
+                updateProgress(10);
+
+                const canExport = await addOnUISdk.app.document.exportAllowed();
+                if (!canExport) {
+                    showStatus('Export restricted. Document under review.', 'warning');
+                    setButtonsDisabled(false);
+                    return;
+                }
+
+                const result = await (await getScriptApi()).exportLayerAssets();
+                updateProgress(60);
+
+                if (!result.assets || result.assets.length === 0) {
+                    showStatus('No layer assets found on the current page.', 'warning');
+                    updateProgress(0);
+                    setButtonsDisabled(false);
+                    return;
+                }
+
+                const zip = new JSZip();
+                for (const asset of result.assets) {
+                    zip.file(asset.fileName, asset.blob);
+                }
+
+                const docTitle = await addOnUISdk.app.document.title();
+                const safeTitle = sanitizeTitle(docTitle);
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                updateProgress(85);
+
+                await downloadBlob(zipBlob, `${safeTitle}_layer_assets.zip`);
+                updateProgress(100);
+                showStatus(`✓ Downloaded ${result.assets.length} layer asset(s). If nothing downloads, use the link below.`, 'success');
+                setTimeout(() => {
+                    updateProgress(0);
+                    showStatus('Ready to export assets.', 'info');
+                    setButtonsDisabled(false);
+                }, 3000);
+            } catch (error) {
+                console.error(error);
+                showStatus(`Error: ${error.message}`, 'error');
+                updateProgress(0);
+                setButtonsDisabled(false);
+            }
+        });
+
+        showStatus('Ready to export assets.', 'info');
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,32 @@
+{
+    "testId": "asset-export-pro",
+    "name": "Asset Export Pro",
+    "version": "1.0.3",
+    "manifestVersion": 2,
+    "requirements": {
+        "apps": [
+            {
+                "name": "Express",
+                "apiVersion": 1
+            }
+        ],
+        "experimentalApis": false,
+        "renditionPreview": false
+    },
+    "entryPoints": [
+        {
+            "type": "panel",
+            "id": "asset-export-pro-panel",
+            "main": "index.html",
+            "documentSandbox": "sandbox/code.js",
+            "permissions": {
+                "sandbox": [
+                    "allow-downloads",
+                    "allow-popups",
+                    "allow-popups-to-escape-sandbox"
+                ],
+                "oauth": []
+            }
+        }
+    ]
+}
