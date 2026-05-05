@@ -194,6 +194,31 @@ This add-on is provided for use within Adobe Express.
 - Export depends on Adobe Express document export permissions.
 - If export is restricted for the current document, the add-on shows a warning and skips package creation.
 
+## Support
+
+If you need help with this add-on:
+
+- Open an issue in this repository with steps to reproduce and screenshots.
+- Include your browser, operating system, and whether the issue occurs in Adobe Express web or desktop.
+
+Repository issues URL (use this as Help URL in Adobe listing):
+
+`https://github.com/amybeth222/Asset-Export-Pro/issues`
+
+## Privacy Policy
+
+Asset Export Pro processes exports locally through Adobe Express APIs. The add-on does not operate its own backend service and does not intentionally collect personal data for storage outside Adobe Express.
+
+Data handling summary:
+
+- Document assets are processed only to generate requested export files.
+- Exported files are downloaded to the user's device.
+- No separate account system is used by this add-on.
+
+Privacy policy URL (use this section link in Adobe listing):
+
+`https://github.com/amybeth222/Asset-Export-Pro#privacy-policy`
+
 ## Help URL (For Listing)
 
 If you publish this on GitHub, use your repository URL as the Help URL, for example:

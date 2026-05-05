@@ -225,7 +225,7 @@
                 includeFontList: false,
                 includeInstructions: true,
                 range: addOnUISdk.constants.Range.entireDocument,
-                directDownload: true
+                directDownload: false
             },
             images: {
                 message: 'Exporting images...',
@@ -314,7 +314,18 @@
         }
 
         async function getDocumentFontLines() {
-            return ['Font report: check your document for fonts used. Sandbox font extraction is currently disabled.'];
+            try {
+                const api = await getScriptApi();
+                const report = await api.getDocumentFontReport();
+                if (!Array.isArray(report) || report.length === 0) {
+                    return ['No fonts detected in the current document text content.'];
+                }
+                return report;
+            } catch (error) {
+                const message = error && error.message ? error.message : String(error);
+                console.warn('Font report extraction failed:', error);
+                return [`Font report unavailable: ${message}`];
+            }
         }
 
         function createThreeMillimeterBleed() {
@@ -380,6 +391,53 @@
                 return addOnUISdk.constants.RenditionIntent.print;
             }
             return addOnUISdk.constants.RenditionIntent.export;
+        }
+
+        async function createPdfRenditionsWithFallback(primaryOptions, baseOptions, applyBleed) {
+            const attempts = [
+                {
+                    label: 'primary',
+                    options: primaryOptions,
+                    intent: getRenditionIntent('pdf', applyBleed)
+                }
+            ];
+
+            if (applyBleed) {
+                attempts.push({
+                    label: 'bleed-only',
+                    options: buildPrintReadyPdfOptions(baseOptions, true, 'bleedOnly'),
+                    intent: addOnUISdk.constants.RenditionIntent.print
+                });
+            }
+
+            attempts.push({
+                label: 'export-default',
+                options: { ...baseOptions },
+                intent: addOnUISdk.constants.RenditionIntent.export
+            });
+
+            let lastError = null;
+            for (const attempt of attempts) {
+                try {
+                    console.log(`[Asset Export Pro] PDF rendition attempt: ${attempt.label}`);
+                    const renditions = await addOnUISdk.app.document.createRenditions(attempt.options, attempt.intent);
+                    if (Array.isArray(renditions) && renditions.length > 0) {
+                        return renditions;
+                    }
+                    lastError = new Error(`No PDF rendition returned (${attempt.label}).`);
+                } catch (error) {
+                    if (isPremiumEntitlementError(error)) {
+                        await promptPremiumUpgrade('This export includes Premium content.');
+                        const entitlementError = new Error('Premium content upgrade required.');
+                        entitlementError.code = 'PREMIUM_UPGRADE_REQUIRED';
+                        throw entitlementError;
+                    }
+                    lastError = error;
+                    console.warn(`[Asset Export Pro] PDF rendition attempt failed: ${attempt.label}`, error);
+                }
+            }
+
+            throw lastError || new Error('PDF export failed: no PDF rendition was generated.');
         }
 
         function parsePdfBox(text, boxName) {
@@ -639,17 +697,21 @@
                     : options;
 
                 let renditions;
-                try {
-                    console.log('[Asset Export Pro] Rendition options:', JSON.stringify(renditionOptions, null, 2));
-                    renditions = await addOnUISdk.app.document.createRenditions(renditionOptions, getRenditionIntent(format.type, applyBleed));
-                } catch (error) {
-                    if (isPremiumEntitlementError(error)) {
-                        await promptPremiumUpgrade('This export includes Premium content.');
-                        const entitlementError = new Error('Premium content upgrade required.');
-                        entitlementError.code = 'PREMIUM_UPGRADE_REQUIRED';
-                        throw entitlementError;
+                if (format.type === 'pdf') {
+                    renditions = await createPdfRenditionsWithFallback(renditionOptions, options, applyBleed);
+                } else {
+                    try {
+                        console.log('[Asset Export Pro] Rendition options:', JSON.stringify(renditionOptions, null, 2));
+                        renditions = await addOnUISdk.app.document.createRenditions(renditionOptions, getRenditionIntent(format.type, applyBleed));
+                    } catch (error) {
+                        if (isPremiumEntitlementError(error)) {
+                            await promptPremiumUpgrade('This export includes Premium content.');
+                            const entitlementError = new Error('Premium content upgrade required.');
+                            entitlementError.code = 'PREMIUM_UPGRADE_REQUIRED';
+                            throw entitlementError;
+                        }
+                        throw error;
                     }
-                    throw error;
                 }
 
                 if (format.type === 'pdf' && applyBleed && renditions.length > 0) {
@@ -724,7 +786,7 @@
             if (action.includeInstructions) {
                 const documentSizeLines = await buildPrintDocumentSizeReport(action.range);
                 const bleedApplied = bleedToggle.checked;
-                zip.file('PRINT_README.txt', buildPrintReadme(documentSizeLines, bleedApplied));
+                zip.file('instructions.txt', buildPrintReadme(documentSizeLines, bleedApplied));
             }
 
             const zipBlob = await zip.generateAsync({ type: 'blob' });
@@ -787,6 +849,12 @@
                 console.error(error);
                 if (error?.code === 'PREMIUM_UPGRADE_REQUIRED') {
                     // Status was already set by premium-upgrade flow helper.
+                    setButtonsDisabled(false);
+                    updateProgress(0);
+                    return;
+                }
+                if (isPremiumEntitlementError(error)) {
+                    await promptPremiumUpgrade('This export includes Premium content.');
                     setButtonsDisabled(false);
                     updateProgress(0);
                     return;
