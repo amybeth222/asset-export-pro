@@ -1,6 +1,6 @@
 {
     "name": "asset_export_pro",
-    "version": "1.0.3",
+    "version": "1.0.5",
     "description": "Adobe Creative Cloud Web Playground Add-on.",
     "scripts": {
         "clean": "ccweb-add-on-scripts clean",

@@ -173,9 +173,8 @@
     <div class="container">
         <h1>Express File Packager</h1>
         <div class="action-list">
-            <button id="downloadImagesBtn" class="action-button">Export PNG Images</button>
+            <button id="downloadImagesBtn" class="action-button">Download Individual Images</button>
             <button id="downloadPdfBtn" class="action-button">Export PDF Document</button>
-            <button id="downloadLayerAssetsBtn" class="action-button">Export Layer Assets</button>
             <button id="exportFontsBtn" class="action-button">Export Font List (fonts.txt)</button>
             <button id="exportAllBtn" class="action-button">Create Package</button>
         </div>
@@ -196,6 +195,9 @@
         let scriptApi = null;
         async function getScriptApi() {
             if (!scriptApi) {
+                if (!runtime || typeof runtime.apiProxy !== 'function') {
+                    throw new Error('Document sandbox is unavailable. Reload the add-on after restarting the dev server.');
+                }
                 scriptApi = await runtime.apiProxy("documentSandbox");
             }
             return scriptApi;
@@ -203,7 +205,6 @@
         const actionButtons = Array.from(document.querySelectorAll('.action-button'));
         const downloadPdfBtn = document.getElementById('downloadPdfBtn');
         const downloadImagesBtn = document.getElementById('downloadImagesBtn');
-        const downloadLayerAssetsBtn = document.getElementById('downloadLayerAssetsBtn');
         const exportFontsBtn = document.getElementById('exportFontsBtn');
         const exportAllBtn = document.getElementById('exportAllBtn');
         const statusEl = document.getElementById('status');
@@ -598,7 +599,7 @@
                                 range: addOnUISdk.constants.Range.specificPages,
                                 pageIds: [page.id],
                                 format: format.format,
-                                backgroundColor: 0x00000000
+                                backgroundColor: 0x00FFFFFF
                             }, addOnUISdk.constants.RenditionIntent.export);
                         } catch (error) {
                             if (isPremiumEntitlementError(error)) {
@@ -628,7 +629,8 @@
                     format: format.format
                 };
                 if (format.type === 'png') {
-                    options.backgroundColor = 0x00000000;
+                    // 0x00FFFFFF = fully transparent (alpha=0). Must be non-zero or SDK ignores it.
+                    options.backgroundColor = 0x00FFFFFF;
                 }
 
                 const applyBleed = bleedToggle.checked;
@@ -796,11 +798,10 @@
         }
 
         downloadPdfBtn.addEventListener('click', () => runAction(ACTIONS.pdf));
-        downloadImagesBtn.addEventListener('click', () => runAction(ACTIONS.images));
         exportFontsBtn.addEventListener('click', () => runAction(ACTIONS.fonts));
         exportAllBtn.addEventListener('click', () => runAction(ACTIONS.all));
 
-        downloadLayerAssetsBtn.addEventListener('click', async () => {
+        downloadImagesBtn.addEventListener('click', async () => {
             try {
                 setButtonsDisabled(true);
                 resetManualDownloadLink();
@@ -818,7 +819,7 @@
                 updateProgress(60);
 
                 if (!result.assets || result.assets.length === 0) {
-                    showStatus('No layer assets found on the current page.', 'warning');
+                    showStatus('No image layers found on the current page.', 'warning');
                     updateProgress(0);
                     setButtonsDisabled(false);
                     return;
@@ -826,7 +827,7 @@
 
                 const zip = new JSZip();
                 for (const asset of result.assets) {
-                    zip.file(asset.fileName, asset.blob);
+                    zip.file(`layer_assets/${asset.fileName}`, asset.blob);
                 }
 
                 const docTitle = await addOnUISdk.app.document.title();
@@ -836,7 +837,7 @@
 
                 await downloadBlob(zipBlob, `${safeTitle}_layer_assets.zip`);
                 updateProgress(100);
-                showStatus(`✓ Downloaded ${result.assets.length} layer asset(s). If nothing downloads, use the link below.`, 'success');
+                showStatus(`✓ Downloaded ${result.assets.length} individual image(s). If nothing downloads, use the link below.`, 'success');
                 setTimeout(() => {
                     updateProgress(0);
                     showStatus('Ready to export assets.', 'info');
